@@ -12,7 +12,7 @@ class DenseBlock(torch.nn.Module):
         ]
         self.final_conv_layer = torch.nn.Sequential(
             torch.nn.Conv2d(in_channels + layers * growth_factor, in_channels, 1),
-            torch.nn.Relu()
+            torch.nn.ReLU()
         )
 
     def forward(self, *input):
