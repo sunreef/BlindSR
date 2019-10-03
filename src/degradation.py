@@ -1,7 +1,9 @@
 import torch
+from torch.nn.functional import conv2d
 
+from globals import SCALE_FACTOR, KERNEL_SIZE
 class Degradation:
-    def __init__(self, kernel_size, theta=0.0, sigma=[1.0, 1.0]):
+    def __init__(self, kernel_size=KERNEL_SIZE, theta=0.0, sigma=[1.0, 1.0]):
         self.kernel_size = kernel_size
         self.theta = torch.tensor([theta])
         self.sigma = torch.tensor(sigma)
@@ -12,7 +14,6 @@ class Degradation:
     def cuda(self):
         self.theta = self.theta.cuda()
         self.sigma = self.sigma.cuda()
-        self.build_kernel()
 
     def build_kernel(self):
         kernel_radius = self.kernel_size // 2
@@ -43,6 +44,30 @@ class Degradation:
         kernel /= kernel.sum()
         self.kernel = kernel
         return self.kernel
+
+    def get_kernel(self):
+        self.build_kernel()
+        return self.kernel
+
+    def get_features(self):
+        self.build_kernel()
+        return torch.reshape(self.kernel, (self.kernel_size ** 2,))
+
+    def apply(self, img, scale=SCALE_FACTOR):
+        weights = torch.zeros(3,3,self.kernel_size, self.kernel_size)
+        if img.is_cuda:
+            weights = weights.cuda()
+            self.cuda()
+        self.build_kernel()
+
+        for c in range(3):
+            weights[c, c, :, :] = self.kernel
+        conv_img = conv2d(img[None], weights)
+
+        scale_factor = int(scale)
+        lr_img = conv_img[0, :, ::scale_factor, ::scale_factor]
+        return lr_img
+
 
 
 

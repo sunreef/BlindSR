@@ -18,17 +18,14 @@ class TrainDataset(Dataset):
                 self.image_files.append(file_name)
 
         self.image_transform = torchvision.transforms.Compose([
-            torchvision.transforms.RandomHorizontalFlip(),
-            torchvision.transforms.RandomVerticalFlip(),
-            torchvision.transforms.RandomCrop(TRAINING_CROP_SIZE)
+            # torchvision.transforms.RandomHorizontalFlip(),
+            # torchvision.transforms.RandomVerticalFlip(),
+            torchvision.transforms.CenterCrop(TRAINING_CROP_SIZE)
         ])
 
-        self.bicubic_upsampling = torchvision.transforms.Resize(
-            SCALE_FACTOR * TRAINING_CROP_SIZE,
-            interpolation=PIL.Image.BICUBIC,
-        )
 
         self.tensor_convert = torchvision.transforms.ToTensor()
+        self.image_convert = torchvision.transforms.ToPILImage()
 
     def __len__(self):
         return len(self.image_files)
@@ -37,16 +34,27 @@ class TrainDataset(Dataset):
         image_file = self.image_files[item]
         img = PIL.Image.open(image_file)
         img = self.image_transform(img)
-
-        degradation = Degradation(KERNEL_SIZE)
-
-
-
         img = self.tensor_convert(img)
 
+        degradation = Degradation(KERNEL_SIZE)
+        lowres_img = degradation.apply(img.cuda())
+        kernel_features = degradation.get_features()
+
+        bicubic_resize = torchvision.transforms.Resize(
+            SCALE_FACTOR * lowres_img.size(1),
+            interpolation=PIL.Image.BICUBIC,
+            )
+
+        bicubic_upsampling = bicubic_resize(self.image_convert(lowres_img.cpu()))
+        bicubic_upsampling = self.tensor_convert(bicubic_upsampling)
+
+        print(lowres_img.size())
+        print(bicubic_upsampling.size())
+
         return {
-            'lowres_img': img,
-            'bicubic_upsampling': img,
-            'downsampling_kernel': img,
+            'lowres_img': lowres_img,
+            'bicubic_upsampling': bicubic_upsampling,
+            'kernel_features': kernel_features,
+            'ground_truth_img': img[:, KERNEL_SIZE//2:-(KERNEL_SIZE//2), KERNEL_SIZE//2:-(KERNEL_SIZE//2)]
         }
 
