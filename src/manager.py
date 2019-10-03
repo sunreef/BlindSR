@@ -13,11 +13,16 @@ class Manager:
         self.args = args
         print(self.args)
 
+        self.epoch = 0
+        self.global_step = 0
+        self.max_epoch = 10000
+
         self.init_model()
         self.init_train_data()
         self.init_optimizer()
+        self.init_summary()
 
-        self.training_epoch()
+        self.train_generator()
 
     def init_model(self):
         self.generator = Generator()
@@ -27,6 +32,11 @@ class Manager:
         self.optimizer = torch.optim.Adam(self.generator.parameters(), lr=TRAINING_LEARNING_RATE)
         self.loss = torch.nn.L1Loss()
 
+    def init_summary(self):
+        log_folder = self.args.log_folder
+        if not os.path.exists(log_folder):
+            os.makedirs(log_folder)
+        self.summary_writer = tensorboardX.SummaryWriter(log_folder)
 
     def init_train_data(self):
         train_folder = self.args.train_input
@@ -38,24 +48,32 @@ class Manager:
         self.valid_dataloader = DataLoader(valid_dataset, batch_size = 1)
 
     def training_epoch(self):
-        for t in range(100):
-            for batch in self.train_dataloader:
-                self.optimizer.zero_grad()
-                lowres_img = batch['lowres_img'].cuda()
-                bicubic_upsampling = batch['bicubic_upsampling'].cuda()
-                kernel_features = batch['kernel_features'].cuda()
-                ground_truth = batch['ground_truth_img'].cuda()
+        for batch in self.train_dataloader:
+            self.global_step += 1
+            self.optimizer.zero_grad()
+            lowres_img = batch['lowres_img'].cuda()
+            bicubic_upsampling = batch['bicubic_upsampling'].cuda()
+            kernel_features = batch['kernel_features'].cuda()
+            ground_truth = batch['ground_truth_img'].cuda()
 
-                generator_output = self.generator(lowres_img, bicubic_upsampling, kernel_features)
+            generator_output = self.generator(lowres_img, bicubic_upsampling, kernel_features)
+            loss = self.loss(generator_output, ground_truth)
+            loss.backward()
+            self.optimizer.step()
 
-                loss = self.loss(generator_output, ground_truth)
-                loss.backward()
-                self.optimizer.step()
+            if self.global_step % 100 == 0:
+                self.summary_writer.add_scalar('generator_l1_loss', loss.item(), global_step=self.global_step)
+                self.summary_writer.add_image('generator_output', generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
+                self.summary_writer.add_image('lowres_img', lowres_img[0].clamp(0.0, 1.0), global_step=self.global_step)
 
-                # to_image = torchvision.transforms.ToPILImage()
-                # pil_image = to_image(generator_output[0].cpu())
-                # pil_image.save('./output.png')
-            break
+                kernel_image = kernel_features[0].reshape((KERNEL_SIZE, KERNEL_SIZE))
+                kernel_image /= kernel_image.max()
+                self.summary_writer.add_image('true_kernel', kernel_image, dataformats='HW', global_step=self.global_step)
+
+    def train_generator(self):
+        while(self.epoch < self.max_epoch):
+            self.training_epoch()
+
 
 
 
