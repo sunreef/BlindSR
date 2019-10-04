@@ -17,7 +17,6 @@ def reconstruct_image(features, scale):
     img_channels = channels // (scale**2)
     reconstructed_img = torch.zeros(batch, img_channels, height * scale, width * scale).cuda()
 
-
     for x in range(scale):
         for y in range(scale):
             for c in range(img_channels):

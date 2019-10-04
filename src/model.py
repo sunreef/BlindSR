@@ -22,7 +22,6 @@ class Generator(torch.nn.Module):
 
         self.final_convolution = torch.nn.Sequential(
             torch.nn.Conv2d(64, 3 * SCALE_FACTOR * SCALE_FACTOR, 3, padding=1),
-            torch.nn.ReLU()
         )
 
     def forward(self, *input):
@@ -35,7 +34,6 @@ class Generator(torch.nn.Module):
         kernel_map = kernel_mapping[:,:,None, None].repeat(1,1,height, width)
 
         bicubic_reduced = reduce_image(bicubic_upsampling, SCALE_FACTOR)
-
         current_features = torch.cat([lowres_img, bicubic_reduced, kernel_map], 1)
         current_features = self.initial_convolution(current_features)
         for i in range(len(self.dense_blocks)):
@@ -43,7 +41,6 @@ class Generator(torch.nn.Module):
             current_features = current_features + block_output
         current_features = self.final_convolution(current_features)
         residual_img = reconstruct_image(current_features, SCALE_FACTOR)
-
         return bicubic_upsampling + residual_img
 
 
