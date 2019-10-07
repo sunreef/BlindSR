@@ -19,6 +19,8 @@ if __name__ == '__main__':
     arg_parser.add_argument('--log_folder', type=str, default=os.path.join(main_path, '..', 'logs', 'x' + str(SCALE_FACTOR) + '_blind_sr'))
     arg_parser.add_argument('--checkpoint_folder', type=str, default=os.path.join(main_path, '..', 'checkpoints', 'x' + str(SCALE_FACTOR) + '_blind_sr'))
 
+    arg_parser.add_argument('--network_type', type=str, choices=['generator', 'discriminator'], default='generator')
+
     arg_list = arg_parser.parse_args()
     manager = Manager(arg_list)
 

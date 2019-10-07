@@ -106,5 +106,7 @@ venv.bak/
 # PyCharm idea folder
 .idea/
 
-# Data folder
+# Data and log folders
 data/
+logs/
+checkpoints/
