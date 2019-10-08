@@ -9,4 +9,4 @@
 
 Independent implementation of the algorithm from the paper "Blind Image Super-Resolution with Spatially Variant Degradations"
 
-[[Project page]](https://igl.ethz.ch/projects/variational-blind-sr/)
+[[Project page]](https://igl.ethz.ch/projects/variational-blind-sr/) [[Paper]](https://igl.ethz.ch/projects/variational-blind-sr/variant-blind-sr.pdf)

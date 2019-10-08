@@ -1,11 +1,15 @@
 import os
+import math
 import torch
+import imageio
 import tensorboardX
 from torch.utils.data import DataLoader
 
 from model import Generator, Discriminator
-from dataset import TrainDataset, ValidDataset
+from dataset import TrainDataset, ValidDataset, TestDataset
 from globals import *
+from image_utils import patchify_tensor, recompose_tensor
+from degradation import Degradation
 
 
 class Manager:
@@ -16,14 +20,18 @@ class Manager:
         self.global_step = 0
         self.max_epoch = 10000
 
-        self.init_model()
-        self.init_train_data()
-        self.init_optimizer()
-        self.init_summary()
+        if self.args.mode == 'train':
+            self.init_model_for_training()
+            self.init_train_data()
+            self.init_optimizer()
+            self.init_summary()
+            self.launch_training()
+        else:
+            self.init_model_for_testing()
+            self.restore_models_for_testing()
+            self.init_test_data()
 
-        self.launch_training()
-
-    def init_model(self):
+    def init_model_for_training(self):
         self.generator = Generator()
         self.generator = self.generator.cuda()
 
@@ -70,7 +78,7 @@ class Manager:
     # _________________________________________________________________________________________________________________
 
     def save_generator_checkpoint(self):
-        checkpoint_folder = os.path.join(self.args.checkpoint_folder, 'generator')
+        checkpoint_folder = self.args.checkpoint_folder
         if not os.path.exists(checkpoint_folder):
             os.makedirs(checkpoint_folder)
         checkpoint_filename = os.path.join(checkpoint_folder, 'generator.pth')
@@ -82,7 +90,7 @@ class Manager:
         torch.save(save_data, checkpoint_filename)
 
     def load_generator_checkpoint_for_training(self):
-        checkpoint_folder = os.path.join(self.args.checkpoint_folder, 'generator')
+        checkpoint_folder = self.args.checkpoint_folder
         checkpoint_filename = os.path.join(checkpoint_folder, 'generator.pth')
         if not os.path.exists(checkpoint_filename):
             print("Couldn't find checkpoint file. Starting training from the beginning.")
@@ -114,13 +122,17 @@ class Manager:
 
             if self.global_step % 100 == 0:
                 print(f'Training step {self.global_step} -- L1 loss: {accumulate_loss / accumulate_steps}')
-                self.summary_writer.add_scalar('train/generator_l1_loss', accumulate_loss / accumulate_steps, global_step=self.global_step)
-                self.summary_writer.add_image('train/generator_output', generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
-                self.summary_writer.add_image('train/lowres_img', lowres_img[0].clamp(0.0, 1.0), global_step=self.global_step)
+                self.summary_writer.add_scalar('train/generator_l1_loss', accumulate_loss / accumulate_steps,
+                                               global_step=self.global_step)
+                self.summary_writer.add_image('train/generator_output', generator_output[0].clamp(0.0, 1.0),
+                                              global_step=self.global_step)
+                self.summary_writer.add_image('train/lowres_img', lowres_img[0].clamp(0.0, 1.0),
+                                              global_step=self.global_step)
 
                 kernel_image = kernel_features[0].reshape((KERNEL_SIZE, KERNEL_SIZE))
                 kernel_image /= kernel_image.max()
-                self.summary_writer.add_image('train/true_kernel', kernel_image, dataformats='HW', global_step=self.global_step)
+                self.summary_writer.add_image('train/true_kernel', kernel_image, dataformats='HW',
+                                              global_step=self.global_step)
 
             if self.global_step % 1000 == 0:
                 self.save_generator_checkpoint()
@@ -141,13 +153,17 @@ class Manager:
                 accumulate_steps += 1
 
             print(f'Validation -- L1 loss: {accumulate_loss / accumulate_steps}')
-            self.summary_writer.add_scalar('valid/generator_l1_loss', accumulate_loss / accumulate_steps, global_step=self.global_step)
-            self.summary_writer.add_image('valid/generator_output', generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
-            self.summary_writer.add_image('valid/lowres_img', lowres_img[0].clamp(0.0, 1.0), global_step=self.global_step)
+            self.summary_writer.add_scalar('valid/generator_l1_loss', accumulate_loss / accumulate_steps,
+                                           global_step=self.global_step)
+            self.summary_writer.add_image('valid/generator_output', generator_output[0].clamp(0.0, 1.0),
+                                          global_step=self.global_step)
+            self.summary_writer.add_image('valid/lowres_img', lowres_img[0].clamp(0.0, 1.0),
+                                          global_step=self.global_step)
 
             kernel_image = kernel_features[0].reshape((KERNEL_SIZE, KERNEL_SIZE))
             kernel_image /= kernel_image.max()
-            self.summary_writer.add_image('valid/true_kernel', kernel_image, dataformats='HW', global_step=self.global_step)
+            self.summary_writer.add_image('valid/true_kernel', kernel_image, dataformats='HW',
+                                          global_step=self.global_step)
 
     def train_generator(self):
         self.load_generator_checkpoint_for_training()
@@ -161,10 +177,10 @@ class Manager:
     # _________________________________________________________________________________________________________________
 
     def save_discriminator_checkpoint(self):
-        checkpoint_folder = os.path.join(self.args.checkpoint_folder, 'discriminator')
+        checkpoint_folder = self.args.checkpoint_folder
         if not os.path.exists(checkpoint_folder):
             os.makedirs(checkpoint_folder)
-        checkpoint_filename = os.path.join(checkpoint_folder, 'checkpoint.pth')
+        checkpoint_filename = os.path.join(checkpoint_folder, 'discriminator.pth')
         save_data = {
             'step': self.global_step,
             'discriminator_state_dict': self.discriminator.state_dict(),
@@ -173,8 +189,8 @@ class Manager:
         torch.save(save_data, checkpoint_filename)
 
     def load_discriminator_checkpoint_for_training(self):
-        generator_checkpoint_folder = os.path.join(self.args.checkpoint_folder, 'generator')
-        generator_checkpoint_filename = os.path.join(generator_checkpoint_folder, 'generator.pth')
+        checkpoint_folder = self.args.checkpoint_folder
+        generator_checkpoint_filename = os.path.join(checkpoint_folder, 'generator.pth')
         if not os.path.exists(generator_checkpoint_filename):
             print("Couldn't find generator checkpoint file.")
             print(" Make sure you have trained the generator before trying to train the discriminator.")
@@ -184,8 +200,7 @@ class Manager:
         self.generator.load_state_dict(data['generator_state_dict'])
         print(f"Restored generator at step {generator_step}.")
 
-        discriminator_checkpoint_folder = os.path.join(self.args.checkpoint_folder, 'discriminator')
-        discriminator_checkpoint_filename = os.path.join(discriminator_checkpoint_folder, 'discriminator.pth')
+        discriminator_checkpoint_filename = os.path.join(checkpoint_folder, 'discriminator.pth')
         if not os.path.exists(discriminator_checkpoint_filename):
             print("Couldn't find discriminator checkpoint file. Starting training from the beginning.")
             return
@@ -207,10 +222,13 @@ class Manager:
             random_kernel_features = batch['random_kernel_features'].cuda()
 
             true_generator_output, true_logs = self.generator(lowres_img, bicubic_upsampling, true_kernel_features)
-            random_generator_output, random_logs = self.generator(lowres_img, bicubic_upsampling, random_kernel_features)
+            random_generator_output, random_logs = self.generator(lowres_img, bicubic_upsampling,
+                                                                  random_kernel_features)
 
-            true_discriminator_output = self.discriminator(lowres_img, true_logs['final_feature_maps'], true_logs['degradation_map'])
-            random_discriminator_output = self.discriminator(lowres_img, random_logs['final_feature_maps'], random_logs['degradation_map'])
+            true_discriminator_output = self.discriminator(lowres_img, true_logs['final_feature_maps'],
+                                                           true_logs['degradation_map'])
+            random_discriminator_output = self.discriminator(lowres_img, random_logs['final_feature_maps'],
+                                                             random_logs['degradation_map'])
 
             error_img = random_generator_output - true_generator_output
 
@@ -226,22 +244,33 @@ class Manager:
 
             if self.global_step % 100 == 0:
                 print(f'Training step {self.global_step} -- L1 loss: {accumulate_loss / accumulate_steps}')
-                self.summary_writer.add_scalar('train/discriminator_l1_loss', accumulate_loss / accumulate_steps, global_step=self.global_step)
+                self.summary_writer.add_scalar('train/discriminator_l1_loss', accumulate_loss / accumulate_steps,
+                                               global_step=self.global_step)
 
-                self.summary_writer.add_image('train/true_generator_output', true_generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
-                self.summary_writer.add_image('train/random_generator_output', random_generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
-                self.summary_writer.add_image('train/error_image', (0.5 + error_img[0]).clamp(0.0, 1.0), global_step=self.global_step)
-                self.summary_writer.add_image('train/random_discriminator_output', (0.5 + random_discriminator_output[0]).clamp(0.0, 1.0), global_step=self.global_step)
-                self.summary_writer.add_image('train/true_discriminator_output', (0.5 + true_discriminator_output[0]).clamp(0.0, 1.0), global_step=self.global_step)
-                self.summary_writer.add_image('train/lowres_img', lowres_img[0].clamp(0.0, 1.0), global_step=self.global_step)
+                self.summary_writer.add_image('train/true_generator_output', true_generator_output[0].clamp(0.0, 1.0),
+                                              global_step=self.global_step)
+                self.summary_writer.add_image('train/random_generator_output',
+                                              random_generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
+                self.summary_writer.add_image('train/error_image', (0.5 + error_img[0]).clamp(0.0, 1.0),
+                                              global_step=self.global_step)
+                self.summary_writer.add_image('train/random_discriminator_output',
+                                              (0.5 + random_discriminator_output[0]).clamp(0.0, 1.0),
+                                              global_step=self.global_step)
+                self.summary_writer.add_image('train/true_discriminator_output',
+                                              (0.5 + true_discriminator_output[0]).clamp(0.0, 1.0),
+                                              global_step=self.global_step)
+                self.summary_writer.add_image('train/lowres_img', lowres_img[0].clamp(0.0, 1.0),
+                                              global_step=self.global_step)
 
                 kernel_image = true_kernel_features[0].reshape((KERNEL_SIZE, KERNEL_SIZE))
                 kernel_image /= kernel_image.max()
-                self.summary_writer.add_image('train/true_kernel', kernel_image, dataformats='HW', global_step=self.global_step)
+                self.summary_writer.add_image('train/true_kernel', kernel_image, dataformats='HW',
+                                              global_step=self.global_step)
 
                 kernel_image = random_kernel_features[0].reshape((KERNEL_SIZE, KERNEL_SIZE))
                 kernel_image /= kernel_image.max()
-                self.summary_writer.add_image('train/random_kernel', kernel_image, dataformats='HW', global_step=self.global_step)
+                self.summary_writer.add_image('train/random_kernel', kernel_image, dataformats='HW',
+                                              global_step=self.global_step)
 
             if self.global_step % 1000 == 0:
                 self.save_discriminator_checkpoint()
@@ -257,10 +286,13 @@ class Manager:
                 random_kernel_features = batch['random_kernel_features'].cuda()
 
                 true_generator_output, true_logs = self.generator(lowres_img, bicubic_upsampling, true_kernel_features)
-                random_generator_output, random_logs = self.generator(lowres_img, bicubic_upsampling, random_kernel_features)
+                random_generator_output, random_logs = self.generator(lowres_img, bicubic_upsampling,
+                                                                      random_kernel_features)
 
-                true_discriminator_output = self.discriminator(lowres_img, true_logs['final_feature_maps'], true_logs['degradation_map'])
-                random_discriminator_output = self.discriminator(lowres_img, random_logs['final_feature_maps'], random_logs['degradation_map'])
+                true_discriminator_output = self.discriminator(lowres_img, true_logs['final_feature_maps'],
+                                                               true_logs['degradation_map'])
+                random_discriminator_output = self.discriminator(lowres_img, random_logs['final_feature_maps'],
+                                                                 random_logs['degradation_map'])
 
                 error_img = random_generator_output - true_generator_output
 
@@ -273,22 +305,33 @@ class Manager:
                 accumulate_steps += 1
 
             print(f'Validation -- L1 loss: {accumulate_loss / accumulate_steps}')
-            self.summary_writer.add_scalar('valid/discriminator_l1_loss', accumulate_loss / accumulate_steps, global_step=self.global_step)
+            self.summary_writer.add_scalar('valid/discriminator_l1_loss', accumulate_loss / accumulate_steps,
+                                           global_step=self.global_step)
 
-            self.summary_writer.add_image('valid/true_generator_output', true_generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
-            self.summary_writer.add_image('valid/random_generator_output', random_generator_output[0].clamp(0.0, 1.0), global_step=self.global_step)
-            self.summary_writer.add_image('valid/error_image', (0.5 + error_img[0]).clamp(0.0, 1.0), global_step=self.global_step)
-            self.summary_writer.add_image('valid/random_discriminator_output', (0.5 + random_discriminator_output[0]).clamp(0.0, 1.0), global_step=self.global_step)
-            self.summary_writer.add_image('valid/true_discriminator_output', (0.5 + true_discriminator_output[0]).clamp(0.0, 1.0), global_step=self.global_step)
-            self.summary_writer.add_image('valid/lowres_img', lowres_img[0].clamp(0.0, 1.0), global_step=self.global_step)
+            self.summary_writer.add_image('valid/true_generator_output', true_generator_output[0].clamp(0.0, 1.0),
+                                          global_step=self.global_step)
+            self.summary_writer.add_image('valid/random_generator_output', random_generator_output[0].clamp(0.0, 1.0),
+                                          global_step=self.global_step)
+            self.summary_writer.add_image('valid/error_image', (0.5 + error_img[0]).clamp(0.0, 1.0),
+                                          global_step=self.global_step)
+            self.summary_writer.add_image('valid/random_discriminator_output',
+                                          (0.5 + random_discriminator_output[0]).clamp(0.0, 1.0),
+                                          global_step=self.global_step)
+            self.summary_writer.add_image('valid/true_discriminator_output',
+                                          (0.5 + true_discriminator_output[0]).clamp(0.0, 1.0),
+                                          global_step=self.global_step)
+            self.summary_writer.add_image('valid/lowres_img', lowres_img[0].clamp(0.0, 1.0),
+                                          global_step=self.global_step)
 
             kernel_image = true_kernel_features[0].reshape((KERNEL_SIZE, KERNEL_SIZE))
             kernel_image /= kernel_image.max()
-            self.summary_writer.add_image('valid/true_kernel', kernel_image, dataformats='HW', global_step=self.global_step)
+            self.summary_writer.add_image('valid/true_kernel', kernel_image, dataformats='HW',
+                                          global_step=self.global_step)
 
             kernel_image = random_kernel_features[0].reshape((KERNEL_SIZE, KERNEL_SIZE))
             kernel_image /= kernel_image.max()
-            self.summary_writer.add_image('valid/random_kernel', kernel_image, dataformats='HW', global_step=self.global_step)
+            self.summary_writer.add_image('valid/random_kernel', kernel_image, dataformats='HW',
+                                          global_step=self.global_step)
 
     def train_discriminator(self):
         self.load_discriminator_checkpoint_for_training()
@@ -296,3 +339,126 @@ class Manager:
         while self.global_step < max_step:
             self.discriminator_training_epoch()
             self.discriminator_validation_epoch()
+
+    # _________________________________________________________________________________________________________________
+    # Test methods to apply our algorithm on a folder of images.
+    # _________________________________________________________________________________________________________________
+    def init_model_for_testing(self):
+        self.generator = Generator()
+        self.generator = self.generator.cuda()
+
+        self.discriminator = Discriminator()
+        self.discriminator = self.discriminator.cuda()
+
+    def init_test_data(self):
+        test_folder = self.args.input
+        test_dataset = TestDataset(test_folder)
+        self.test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+
+    def restore_models_for_testing(self):
+        checkpoint_folder = self.args.checkpoint_folder
+        generator_checkpoint_filename = os.path.join(checkpoint_folder, 'generator.pth')
+        discriminator_checkpoint_filename = os.path.join(checkpoint_folder, 'discriminator.pth')
+        if (not os.path.exists(discriminator_checkpoint_filename)) or (
+                not os.path.exists(generator_checkpoint_filename)):
+            print("Error: could not locate network checkpoints. Make sure the files are in the right location.")
+            print(f"The generator checkpoint should be at {generator_checkpoint_filename}")
+            print(f"The discriminator checkpoint should be at {discriminator_checkpoint_filename}")
+            exit()
+        data = torch.load(generator_checkpoint_filename)
+        self.generator.load_state_dict(data['generator_state_dict'])
+        data = torch.load(discriminator_checkpoint_filename)
+        self.discriminator.load_state_dict(data['discriminator_state_dict'])
+
+    def launch_test(self):
+        patch_size = self.args.patch_size
+        overlap = patch_size // 4
+        for batch in self.test_dataloader:
+            lowres_img = batch['lowres_img'].cuda()
+            bicubic_upsampling = batch['bicubic_upsampling'].cuda()
+            image_name = batch['img_name']
+            batch_size, channels, img_height, img_width = lowres_img.size()
+
+            lowres_patches = patchify_tensor(lowres_img, patch_size, overlap=overlap)
+            bicubic_patches = patchify_tensor(bicubic_upsampling, SCALE_FACTOR * patch_size,
+                                              overlap=SCALE_FACTOR * overlap)
+            n_patches = lowres_patches.size(0)
+
+            best_sigma = [1.0, 1.0]
+            best_theta = 0.0
+            best_loss = float("inf")
+
+            sigma_steps = 6
+            theta_steps = 4
+            optim_steps = 50
+
+            loss_fn = torch.nn.L1Loss()
+            with torch.no_grad():
+                for sigma_x_step in range(sigma_steps):
+                    for sigma_y_step in range(sigma_steps):
+                        for theta_step in range(theta_steps):
+                            sigma = [0.001 + (4.0 / sigma_steps) * sigma_x_step,
+                                     0.001 + (4.0 / sigma_steps) * sigma_y_step]
+                            theta = theta_step * math.pi / (2.0 * theta_steps)
+                            degradation_kernel = Degradation(KERNEL_SIZE, theta, sigma)
+                            kernel_features = degradation_kernel.get_features()[None]
+
+                            loss = 0.0
+                            for p in range(n_patches):
+                                lowres_input = lowres_patches[p:p + 1]
+                                bicubic_input = bicubic_patches[p:p + 1]
+                                generator_output, logs = self.generator(lowres_input, bicubic_input, kernel_features)
+                                discriminator_output = self.discriminator(lowres_input, logs['final_feature_maps'],
+                                                                          logs['degradation_map'])
+                                loss += discriminator_output.abs().sum().item()
+
+                            if loss < best_loss:
+                                best_loss = loss
+                                best_sigma = sigma
+                                best_theta = theta
+
+            sigma_parameter = torch.nn.Parameter(best_sigma, requires_grad=True)
+            theta_parameter = torch.nn.Parameter(best_theta, requires_grad=True)
+            optimizer = torch.optim.Adam([sigma_parameter, theta_parameter], lr=0.01)
+
+            for _ in range(optim_steps):
+                for p in range(n_patches):
+                    optimizer.zero_grad()
+                    lowres_input = lowres_patches[p:p + 1]
+                    bicubic_input = bicubic_patches[p:p + 1]
+                    degradation_kernel = Degradation(KERNEL_SIZE)
+                    degradation_kernel.set_parameters(sigma_parameter, theta_parameter)
+                    degradation_kernel.cuda()
+                    kernel_features = degradation_kernel.get_features()[None]
+
+                    generator_output, logs = self.generator(lowres_input, bicubic_input, kernel_features)
+                    discriminator_output = self.discriminator(lowres_input, logs['final_feature_maps'],
+                                                              logs['degradation_map'])
+                    loss = discriminator_output.abs().sum()
+                    loss.backward()
+                    optimizer.step()
+
+            with torch.no_grad():
+                degradation_kernel = Degradation(KERNEL_SIZE)
+                degradation_kernel.set_parameters(sigma_parameter, theta_parameter)
+                degradation_kernel.cuda()
+                kernel_features = degradation_kernel.get_features()[None]
+
+                highres_patches = []
+                for p in range(n_patches):
+                    lowres_input = lowres_patches[p:p + 1]
+                    bicubic_input = bicubic_patches[p:p + 1]
+                    generator_output, _ = self.generator(lowres_input, bicubic_input, kernel_features)
+                    highres_patches.append(generator_output)
+                highres_patches = torch.cat(highres_patches, 0)
+                highres_output = recompose_tensor(highres_patches, SCALE_FACTOR * img_height, SCALE_FACTOR * img_width,
+                                                  overlap=SCALE_FACTOR * overlap)
+
+                highres_image = highres_output[0].permute(1, 2, 0).clamp(0.0, 1.0)
+                output_folder = self.args.output
+                if not os.path.exists(output_folder):
+                    os.makedirs(output_folder)
+                output_image_name = str.split(image_name, '.')[0] + '.png'
+                output_file = os.path.join(output_folder, output_image_name)
+                imageio.imwrite(output_file, highres_image)
+

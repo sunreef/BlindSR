@@ -115,3 +115,33 @@ class ValidDataset(Dataset):
             'ground_truth_img': gtruth_img
         }
 
+class TestDataset(Dataset):
+    def __init__(self, folder):
+        self.image_files = []
+        for dir_path, _, file_names in os.walk(folder):
+            for f in file_names:
+                file_name = os.path.join(dir_path, f)
+                self.image_files.append(file_name)
+        self.tensor_convert = torchvision.transforms.ToTensor()
+
+    def __len__(self):
+        return len(self.image_files)
+
+    def __getitem__(self, item):
+        image_file = self.image_files[item]
+        img = PIL.Image.open(image_file)
+
+        bicubic_resize = torchvision.transforms.Resize(
+            SCALE_FACTOR * img.size(1),
+            interpolation=PIL.Image.BICUBIC,
+            )
+        bicubic_upsampling = bicubic_resize(img.cpu())
+
+        img = self.tensor_convert(img)
+        bicubic_upsampling = self.tensor_convert(bicubic_upsampling)
+
+        return {
+            'lowres_img': img,
+            'bicubic_upsampling': bicubic_upsampling,
+            'img_name': os.path.basename(image_file),
+        }

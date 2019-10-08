@@ -15,6 +15,10 @@ class Degradation:
         self.theta = self.theta.cuda()
         self.sigma = self.sigma.cuda()
 
+    def set_parameters(self, sigma, theta):
+        self.sigma = sigma
+        self.theta = theta
+
     def build_kernel(self):
         kernel_radius = self.kernel_size // 2
         kernel_range = torch.linspace(-kernel_radius, kernel_radius, self.kernel_size)
