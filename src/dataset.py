@@ -93,6 +93,11 @@ class ValidDataset(Dataset):
         lowres_img = degradation.apply(img.cuda())
         kernel_features = degradation.get_features()
 
+        random_sigma = [rng.uniform(0.001, 4.0), rng.uniform(0.001, 4.0)]
+        random_theta = rng.uniform(0.0, math.pi)
+        random_degradation = Degradation(KERNEL_SIZE, theta=random_theta, sigma=random_sigma)
+        random_kernel_features = random_degradation.get_features()
+
         bicubic_resize = torchvision.transforms.Resize(
             SCALE_FACTOR * lowres_img.size(1),
             interpolation=PIL.Image.BICUBIC,
@@ -106,6 +111,7 @@ class ValidDataset(Dataset):
             'lowres_img': lowres_img,
             'bicubic_upsampling': bicubic_upsampling,
             'kernel_features': kernel_features,
+            'random_kernel_features': random_kernel_features,
             'ground_truth_img': gtruth_img
         }
 
