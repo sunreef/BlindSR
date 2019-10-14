@@ -132,10 +132,10 @@ class TestDataset(Dataset):
         img = PIL.Image.open(image_file)
 
         bicubic_resize = torchvision.transforms.Resize(
-            SCALE_FACTOR * img.size(1),
+            SCALE_FACTOR * img.size[1],
             interpolation=PIL.Image.BICUBIC,
             )
-        bicubic_upsampling = bicubic_resize(img.cpu())
+        bicubic_upsampling = bicubic_resize(img)
 
         img = self.tensor_convert(img)
         bicubic_upsampling = self.tensor_convert(bicubic_upsampling)

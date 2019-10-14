@@ -30,6 +30,7 @@ class Manager:
             self.init_model_for_testing()
             self.restore_models_for_testing()
             self.init_test_data()
+            self.launch_test()
 
     def init_model_for_training(self):
         self.generator = Generator()
@@ -124,6 +125,8 @@ class Manager:
                 print(f'Training step {self.global_step} -- L1 loss: {accumulate_loss / accumulate_steps}')
                 self.summary_writer.add_scalar('train/generator_l1_loss', accumulate_loss / accumulate_steps,
                                                global_step=self.global_step)
+                self.summary_writer.add_image('train/ground_truth', ground_truth[0].clamp(0.0, 1.0),
+                                              global_step=self.global_step)
                 self.summary_writer.add_image('train/generator_output', generator_output[0].clamp(0.0, 1.0),
                                               global_step=self.global_step)
                 self.summary_writer.add_image('train/lowres_img', lowres_img[0].clamp(0.0, 1.0),
@@ -155,6 +158,8 @@ class Manager:
             print(f'Validation -- L1 loss: {accumulate_loss / accumulate_steps}')
             self.summary_writer.add_scalar('valid/generator_l1_loss', accumulate_loss / accumulate_steps,
                                            global_step=self.global_step)
+            self.summary_writer.add_image('valid/ground_truth', ground_truth[0].clamp(0.0, 1.0),
+                                          global_step=self.global_step)
             self.summary_writer.add_image('valid/generator_output', generator_output[0].clamp(0.0, 1.0),
                                           global_step=self.global_step)
             self.summary_writer.add_image('valid/lowres_img', lowres_img[0].clamp(0.0, 1.0),
@@ -220,6 +225,7 @@ class Manager:
             bicubic_upsampling = batch['bicubic_upsampling'].cuda()
             true_kernel_features = batch['kernel_features'].cuda()
             random_kernel_features = batch['random_kernel_features'].cuda()
+            ground_truth = batch['ground_truth_img'].cuda()
 
             true_generator_output, true_logs = self.generator(lowres_img, bicubic_upsampling, true_kernel_features)
             random_generator_output, random_logs = self.generator(lowres_img, bicubic_upsampling,
@@ -247,6 +253,8 @@ class Manager:
                 self.summary_writer.add_scalar('train/discriminator_l1_loss', accumulate_loss / accumulate_steps,
                                                global_step=self.global_step)
 
+                self.summary_writer.add_image('train/ground_truth', ground_truth[0].clamp(0.0, 1.0),
+                                              global_step=self.global_step)
                 self.summary_writer.add_image('train/true_generator_output', true_generator_output[0].clamp(0.0, 1.0),
                                               global_step=self.global_step)
                 self.summary_writer.add_image('train/random_generator_output',
@@ -279,11 +287,12 @@ class Manager:
         accumulate_loss = 0
         accumulate_steps = 0
         with torch.no_grad():
-            for batch in self.train_dataloader:
+            for batch in self.valid_dataloader:
                 lowres_img = batch['lowres_img'].cuda()
                 bicubic_upsampling = batch['bicubic_upsampling'].cuda()
                 true_kernel_features = batch['kernel_features'].cuda()
                 random_kernel_features = batch['random_kernel_features'].cuda()
+                ground_truth = batch['ground_truth_img'].cuda()
 
                 true_generator_output, true_logs = self.generator(lowres_img, bicubic_upsampling, true_kernel_features)
                 random_generator_output, random_logs = self.generator(lowres_img, bicubic_upsampling,
@@ -308,6 +317,8 @@ class Manager:
             self.summary_writer.add_scalar('valid/discriminator_l1_loss', accumulate_loss / accumulate_steps,
                                            global_step=self.global_step)
 
+            self.summary_writer.add_image('valid/ground_truth', ground_truth[0].clamp(0.0, 1.0),
+                                          global_step=self.global_step)
             self.summary_writer.add_image('valid/true_generator_output', true_generator_output[0].clamp(0.0, 1.0),
                                           global_step=self.global_step)
             self.summary_writer.add_image('valid/random_generator_output', random_generator_output[0].clamp(0.0, 1.0),
@@ -353,7 +364,7 @@ class Manager:
     def init_test_data(self):
         test_folder = self.args.input
         test_dataset = TestDataset(test_folder)
-        self.test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
+        self.test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
     def restore_models_for_testing(self):
         checkpoint_folder = self.args.checkpoint_folder
@@ -392,7 +403,6 @@ class Manager:
             theta_steps = 4
             optim_steps = 50
 
-            loss_fn = torch.nn.L1Loss()
             with torch.no_grad():
                 for sigma_x_step in range(sigma_steps):
                     for sigma_y_step in range(sigma_steps):
@@ -401,7 +411,7 @@ class Manager:
                                      0.001 + (4.0 / sigma_steps) * sigma_y_step]
                             theta = theta_step * math.pi / (2.0 * theta_steps)
                             degradation_kernel = Degradation(KERNEL_SIZE, theta, sigma)
-                            kernel_features = degradation_kernel.get_features()[None]
+                            kernel_features = degradation_kernel.get_features()[None].cuda()
 
                             loss = 0.0
                             for p in range(n_patches):
@@ -417,8 +427,8 @@ class Manager:
                                 best_sigma = sigma
                                 best_theta = theta
 
-            sigma_parameter = torch.nn.Parameter(best_sigma, requires_grad=True)
-            theta_parameter = torch.nn.Parameter(best_theta, requires_grad=True)
+            sigma_parameter = torch.nn.Parameter(torch.tensor(best_sigma))
+            theta_parameter = torch.nn.Parameter(torch.tensor(best_theta))
             optimizer = torch.optim.Adam([sigma_parameter, theta_parameter], lr=0.01)
 
             for _ in range(optim_steps):
@@ -454,7 +464,7 @@ class Manager:
                 highres_output = recompose_tensor(highres_patches, SCALE_FACTOR * img_height, SCALE_FACTOR * img_width,
                                                   overlap=SCALE_FACTOR * overlap)
 
-                highres_image = highres_output[0].permute(1, 2, 0).clamp(0.0, 1.0)
+                highres_image = highres_output[0].permute(1, 2, 0).clamp(0.0, 1.0).cpu()
                 output_folder = self.args.output
                 if not os.path.exists(output_folder):
                     os.makedirs(output_folder)
@@ -462,3 +472,8 @@ class Manager:
                 output_file = os.path.join(output_folder, output_image_name)
                 imageio.imwrite(output_file, highres_image)
 
+                kernel_image = kernel_features[0].reshape(KERNEL_SIZE, KERNEL_SIZE).cpu()
+                kernel_image /= kernel_image.max()
+                output_kernel_image_name = str.split(image_name, '.')[0] + '_kernel.png'
+                output_kernel_file = os.path.join(output_folder, output_kernel_image_name)
+                imageio.imwrite(output_kernel_file, kernel_image)

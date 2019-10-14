@@ -109,4 +109,3 @@ venv.bak/
 # Data and log folders
 data/
 logs/
-checkpoints/
