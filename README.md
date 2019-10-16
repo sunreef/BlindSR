@@ -23,7 +23,7 @@ This project runs with Python 3.7.3 (recommended to use Anaconda) with the follo
 
 ## Usage
 
-#### Testing
+### Testing
 
 To test our algorithm on your images, run the following from the root folder of the project:
 
@@ -40,7 +40,7 @@ If your test crashes due to insufficient GPU memory, you can adjust the size of 
 The default size is 200. Lower it if you encounter memory issues.
 
 
-#### Training
+### Training
 
 If you want to retrain our models on your own dataset, you can do so as well.
 
@@ -60,3 +60,38 @@ python src/main.py --mode train --network_type discriminator --train_input path/
 
 Make sure that the checkpoint of the generator `checkpoints/x2_blind_sr/generator.pth` exists when you start training the discriminator.
 The logs and checkpoints of the discriminator training will be saved in the same place.
+
+## Remarks
+
+This repository is an independent re-implementation of the algorithm from the paper "Blind Image Super-Resolution with Spatially Variant Degradations", published at Siggraph Asia 2019.
+
+**This is not the original code used to generate the results presented in the paper.**
+
+Results might be different due to slight differences in architecture, training strategies or datasets.
+
+
+## Publication
+
+If this code helps your research, please consider citing the following paper.
+
+**Blind Image Super-Resolution with Spatially Variant Degradations** - <i>[Victor Cornillère](https://github.com/sunreef), [Abdelaziz Djelouah](https://adjelouah.github.io/), [Wang Yifan](http://yifita.github.io/), [Olga Sorkine-Hornung](http://igl.ethz.ch/people/sorkine/), [Christopher Schroers](https://la.disneyresearch.com/people/christopher-schroers/)</i> - Siggraph Asia 2019.
+
+```
+@article{CDW19blindsr,
+    author = {
+        Cornill{\`e}re, Victor and
+        Djelouah, Abdelaziz and
+        Yifan, Wang and
+        Sorkine-Hornung, Olga and
+        Schroers, Christopher},
+    title = {Blind image super resolution with spatially variant degradations},
+    journal = {ACM Transactions on Graphics (proceedings of ACM SIGGRAPH ASIA)},
+    volume = {38},
+    number = {6},
+    year = {2019},
+}
+```
+
+## Contacts
+If you have any question, please contact [Victor Cornillère](covictor@inf.ethz.ch).
+
