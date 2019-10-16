@@ -93,5 +93,5 @@ If this code helps your research, please consider citing the following paper.
 ```
 
 ## Contacts
-If you have any question, please contact [Victor Cornillère](covictor@inf.ethz.ch).
+If you have any question, please contact [Victor Cornillère](mailto:covictor@inf.ethz.ch).
 
