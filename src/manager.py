@@ -15,7 +15,6 @@ from degradation import Degradation
 class Manager:
     def __init__(self, args):
         self.args = args
-        print(self.args)
 
         self.global_step = 0
         self.max_epoch = 10000
@@ -125,6 +124,8 @@ class Manager:
                 print(f'Training step {self.global_step} -- L1 loss: {accumulate_loss / accumulate_steps}')
                 self.summary_writer.add_scalar('train/generator_l1_loss', accumulate_loss / accumulate_steps,
                                                global_step=self.global_step)
+                accumulate_loss = 0
+                accumulate_steps = 0
                 self.summary_writer.add_image('train/ground_truth', ground_truth[0].clamp(0.0, 1.0),
                                               global_step=self.global_step)
                 self.summary_writer.add_image('train/generator_output', generator_output[0].clamp(0.0, 1.0),
@@ -252,6 +253,8 @@ class Manager:
                 print(f'Training step {self.global_step} -- L1 loss: {accumulate_loss / accumulate_steps}')
                 self.summary_writer.add_scalar('train/discriminator_l1_loss', accumulate_loss / accumulate_steps,
                                                global_step=self.global_step)
+                accumulate_loss = 0
+                accumulate_steps = 0
 
                 self.summary_writer.add_image('train/ground_truth', ground_truth[0].clamp(0.0, 1.0),
                                               global_step=self.global_step)

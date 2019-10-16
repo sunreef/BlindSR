@@ -21,7 +21,7 @@ class TrainDataset(Dataset):
         self.image_transform = torchvision.transforms.Compose([
             torchvision.transforms.RandomHorizontalFlip(),
             torchvision.transforms.RandomVerticalFlip(),
-            torchvision.transforms.RandomCrop(TRAINING_CROP_SIZE)
+            torchvision.transforms.RandomCrop(TRAINING_CROP_SIZE, pad_if_needed=True)
         ])
         self.tensor_convert = torchvision.transforms.ToTensor()
         self.image_convert = torchvision.transforms.ToPILImage()
