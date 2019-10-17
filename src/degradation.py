@@ -45,7 +45,7 @@ class Degradation:
         gaussian = lambda x,y: (- ( a * (x ** 2) + 2.0 * b * x * y + c * (y ** 2))).exp()
 
         kernel = gaussian(horizontal_range, vertical_range)
-        kernel /= kernel.sum()
+        kernel = kernel / kernel.sum()
         self.kernel = kernel
         return self.kernel
 

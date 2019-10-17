@@ -29,8 +29,13 @@ def patchify_tensor(features, patch_size, overlap=10):
     batch_size, channels, height, width = features.size()
 
     effective_patch_size = patch_size - overlap
-    n_patches_height = (height // effective_patch_size) + 1
-    n_patches_width = (width // effective_patch_size) + 1
+    n_patches_height = (height // effective_patch_size)
+    n_patches_width = (width // effective_patch_size)
+
+    if n_patches_height * effective_patch_size < height:
+        n_patches_height += 1
+    if n_patches_width * effective_patch_size < width:
+        n_patches_width += 1
 
     patches = []
     for b in range(batch_size):
@@ -45,10 +50,16 @@ def patchify_tensor(features, patch_size, overlap=10):
 
 
 def recompose_tensor(patches, full_height, full_width, overlap=10):
+
     batch_size, channels, patch_size, _ = patches.size()
     effective_patch_size = patch_size - overlap
-    n_patches_height = (full_height // effective_patch_size) + 1
-    n_patches_width = (full_width // effective_patch_size) + 1
+    n_patches_height = (full_height // effective_patch_size)
+    n_patches_width = (full_width // effective_patch_size)
+
+    if n_patches_height * effective_patch_size < full_height:
+        n_patches_height += 1
+    if n_patches_width * effective_patch_size < full_width:
+        n_patches_width += 1
 
     n_patches = n_patches_height * n_patches_width
     if batch_size % n_patches != 0:
@@ -72,13 +83,20 @@ def recompose_tensor(patches, full_height, full_width, overlap=10):
             blending_image[0, :, patch_start_height: patch_start_height + patch_size, patch_start_width: patch_start_width + patch_size] += blending_patch[None]
 
     recomposed_tensor = torch.zeros(final_batch_size, channels, full_height, full_width)
+    if patches.is_cuda:
+        blending_patch = blending_patch.cuda()
+        blending_image = blending_image.cuda()
+        recomposed_tensor = recomposed_tensor.cuda()
     patch_index = 0
     for b in range(final_batch_size):
         for h in range(n_patches_height):
             for w in range(n_patches_width):
                 patch_start_height = min(h * effective_patch_size, full_height - patch_size)
                 patch_start_width = min(w * effective_patch_size, full_width - patch_size)
-                recomposed_tensor[b, :, patch_start_height: patch_start_height + patch_size, patch_start_width: patch_start_width + patch_size] += patches[patch_index]
-    recomposed_tensor /= blending_image[None]
+                recomposed_tensor[b, :, patch_start_height: patch_start_height + patch_size, patch_start_width: patch_start_width + patch_size] += patches[patch_index] * blending_patch
+                patch_index += 1
+    recomposed_tensor /= blending_image
+
+    return recomposed_tensor
 
 

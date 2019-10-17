@@ -129,7 +129,7 @@ class TestDataset(Dataset):
 
     def __getitem__(self, item):
         image_file = self.image_files[item]
-        img = PIL.Image.open(image_file)
+        img = PIL.Image.open(image_file).convert("RGB")
 
         bicubic_resize = torchvision.transforms.Resize(
             SCALE_FACTOR * img.size[1],

@@ -405,8 +405,10 @@ class Manager:
             sigma_steps = 6
             theta_steps = 4
             optim_steps = 50
+            sharpness_control = 0.0001
 
             with torch.no_grad():
+                print("Finding best kernel starting point...")
                 for sigma_x_step in range(sigma_steps):
                     for sigma_y_step in range(sigma_steps):
                         for theta_step in range(theta_steps):
@@ -430,9 +432,12 @@ class Manager:
                                 best_sigma = sigma
                                 best_theta = theta
 
+            print(f"Starting optimization with sigma {best_sigma} and theta {best_theta}")
+
             sigma_parameter = torch.nn.Parameter(torch.tensor(best_sigma))
             theta_parameter = torch.nn.Parameter(torch.tensor(best_theta))
             optimizer = torch.optim.Adam([sigma_parameter, theta_parameter], lr=0.01)
+            loss_fn = torch.nn.L1Loss()
 
             for _ in range(optim_steps):
                 for p in range(n_patches):
@@ -441,16 +446,18 @@ class Manager:
                     bicubic_input = bicubic_patches[p:p + 1]
                     degradation_kernel = Degradation(KERNEL_SIZE)
                     degradation_kernel.set_parameters(sigma_parameter, theta_parameter)
-                    degradation_kernel.cuda()
-                    kernel_features = degradation_kernel.get_features()[None]
+                    kernel_features = degradation_kernel.get_features()[None].cuda()
 
                     generator_output, logs = self.generator(lowres_input, bicubic_input, kernel_features)
                     discriminator_output = self.discriminator(lowres_input, logs['final_feature_maps'],
                                                               logs['degradation_map'])
-                    loss = discriminator_output.abs().sum()
+                    loss = loss_fn(discriminator_output, torch.zeros_like(discriminator_output))
+                    loss -= sharpness_control * sigma_parameter.abs().sum().cuda()
+
                     loss.backward()
                     optimizer.step()
 
+            print(f"Final kernel parameters are sigma {sigma_parameter.detach().cpu().numpy()} and theta {theta_parameter.detach().cpu().numpy()}")
             with torch.no_grad():
                 degradation_kernel = Degradation(KERNEL_SIZE)
                 degradation_kernel.set_parameters(sigma_parameter, theta_parameter)
@@ -471,12 +478,14 @@ class Manager:
                 output_folder = self.args.output
                 if not os.path.exists(output_folder):
                     os.makedirs(output_folder)
-                output_image_name = str.split(image_name, '.')[0] + '.png'
+                output_image_name = str.split(image_name[0], '.')[0] + '.png'
                 output_file = os.path.join(output_folder, output_image_name)
                 imageio.imwrite(output_file, highres_image)
+                print(f"Saving output image at {output_file}.")
 
                 kernel_image = kernel_features[0].reshape(KERNEL_SIZE, KERNEL_SIZE).cpu()
                 kernel_image /= kernel_image.max()
-                output_kernel_image_name = str.split(image_name, '.')[0] + '_kernel.png'
+                output_kernel_image_name = str.split(image_name[0], '.')[0] + '_kernel.png'
                 output_kernel_file = os.path.join(output_folder, output_kernel_image_name)
                 imageio.imwrite(output_kernel_file, kernel_image)
+                print(f"Saving output kernel at {output_kernel_file}.")

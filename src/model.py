@@ -28,7 +28,7 @@ class Generator(torch.nn.Module):
         batch_size, channels, height, width = lowres_img.size()
         kernel_mapping = self.kernel_linear_mapping(kernel_features)
         kernel_map = kernel_mapping[:,:,None, None].repeat(1,1,height, width)
-        logs['degradation_map'] = kernel_map.clone()
+        logs['degradation_map'] = kernel_map
 
         bicubic_reduced = reduce_image(bicubic_upsampling, SCALE_FACTOR)
         current_features = torch.cat([lowres_img, bicubic_reduced, kernel_map], 1)
@@ -36,7 +36,7 @@ class Generator(torch.nn.Module):
         for i in range(len(self.dense_blocks)):
             block_output = self.dense_blocks[i](current_features)
             current_features = current_features + block_output
-        logs['final_feature_maps'] = current_features.clone()
+        logs['final_feature_maps'] = current_features
         current_features = self.final_convolution(current_features)
         residual_img = reconstruct_image(current_features, SCALE_FACTOR)
         return bicubic_upsampling + residual_img, logs
