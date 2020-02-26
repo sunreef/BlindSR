@@ -108,4 +108,9 @@ venv.bak/
 
 # Data and log folders
 data/
+output/
 logs/
+
+# Vim files
+*.swp
+*.swo

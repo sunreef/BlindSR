@@ -474,7 +474,7 @@ class Manager:
                 highres_output = recompose_tensor(highres_patches, SCALE_FACTOR * img_height, SCALE_FACTOR * img_width,
                                                   overlap=SCALE_FACTOR * overlap)
 
-                highres_image = highres_output[0].permute(1, 2, 0).clamp(0.0, 1.0).cpu()
+                highres_image = highres_output[0].permute(1, 2, 0).clamp(0.0, 1.0).cpu().numpy()
                 output_folder = self.args.output
                 if not os.path.exists(output_folder):
                     os.makedirs(output_folder)
@@ -483,7 +483,7 @@ class Manager:
                 imageio.imwrite(output_file, highres_image)
                 print(f"Saving output image at {output_file}.")
 
-                kernel_image = kernel_features[0].reshape(KERNEL_SIZE, KERNEL_SIZE).cpu()
+                kernel_image = kernel_features[0].reshape(KERNEL_SIZE, KERNEL_SIZE).cpu().numpy()
                 kernel_image /= kernel_image.max()
                 output_kernel_image_name = str.split(image_name[0], '.')[0] + '_kernel.png'
                 output_kernel_file = os.path.join(output_folder, output_kernel_image_name)
