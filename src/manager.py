@@ -391,6 +391,7 @@ class Manager:
             lowres_img = batch['lowres_img'].cuda()
             bicubic_upsampling = batch['bicubic_upsampling'].cuda()
             image_name = batch['img_name']
+            flipped = batch['flipped']
             batch_size, channels, img_height, img_width = lowres_img.size()
 
             lowres_patches = patchify_tensor(lowres_img, patch_size, overlap=overlap)
@@ -474,6 +475,8 @@ class Manager:
                 highres_output = recompose_tensor(highres_patches, SCALE_FACTOR * img_height, SCALE_FACTOR * img_width,
                                                   overlap=SCALE_FACTOR * overlap)
 
+                if flipped:
+                    highres_output = highres_output.permute(0, 1, 3, 2)
                 highres_image = highres_output[0].permute(1, 2, 0).clamp(0.0, 1.0).cpu().numpy()
                 output_folder = self.args.output
                 if not os.path.exists(output_folder):
@@ -483,7 +486,10 @@ class Manager:
                 imageio.imwrite(output_file, highres_image)
                 print(f"Saving output image at {output_file}.")
 
-                kernel_image = kernel_features[0].reshape(KERNEL_SIZE, KERNEL_SIZE).cpu().numpy()
+                kernel_features = kernel_features.reshape(1, KERNEL_SIZE, KERNEL_SIZE)
+                if flipped:
+                    kernel_features = kernel_features.permute(0, 2, 1)
+                kernel_image = kernel_features[0].cpu().numpy()
                 kernel_image /= kernel_image.max()
                 output_kernel_image_name = str.split(image_name[0], '.')[0] + '_kernel.png'
                 output_kernel_file = os.path.join(output_folder, output_kernel_image_name)

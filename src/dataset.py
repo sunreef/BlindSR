@@ -131,6 +131,12 @@ class TestDataset(Dataset):
         image_file = self.image_files[item]
         img = PIL.Image.open(image_file).convert("RGB")
 
+        # If height > width, we flip the image
+        flipped = False
+        if img.height > img.width:
+            img = img.transpose(PIL.Image.TRANSPOSE)
+            flipped = True
+
         bicubic_resize = torchvision.transforms.Resize(
             SCALE_FACTOR * img.size[1],
             interpolation=PIL.Image.BICUBIC,
@@ -144,4 +150,5 @@ class TestDataset(Dataset):
             'lowres_img': img,
             'bicubic_upsampling': bicubic_upsampling,
             'img_name': os.path.basename(image_file),
+            'flipped': flipped
         }
